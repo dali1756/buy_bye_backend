@@ -13,13 +13,12 @@ class MainCategoryViewSet(viewsets.ModelViewSet):
 class SubCategoryViewSet(viewsets.ModelViewSet):
     queryset = SubCategory.objects.all()
     serializer_class = SubCategorySerializer
-    
+
     def get_queryset(self):
         queryset = SubCategory.objects.select_related("main_category")
         main_category = self.request.query_params.get("main_category", None)
         if main_category:
             queryset = queryset.filter(main_category__name=main_category)
-        
         return queryset
 
 class ProductViewSet(viewsets.ModelViewSet):

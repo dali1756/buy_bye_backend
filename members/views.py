@@ -1,46 +1,99 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework import status, generics
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework_simplejwt.tokens import RefreshToken
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from django.conf import settings
+from .serializers import ProfileSerializer
+from .forms import ProfileUpdateForm, PasswordChangeForm, UserRegistrationForm
 import os
-from django.contrib.auth.models import UserManager
 
 User = get_user_model()
 
-@method_decorator(csrf_exempt, name='dispatch')
+class ProfileView(generics.RetrieveAPIView):
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+class ProfileUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        try:
+            user = request.user
+            form = ProfileUpdateForm(data=request.data, user=user, instance=user)
+            if form.is_valid():
+                updated_user = form.save()
+                serializer = ProfileSerializer(updated_user)
+                return Response({
+                    "message": "個人資料更新成功。",
+                    "user": serializer.data
+                }, status=status.HTTP_200_OK)
+            else:
+                # 返回驗證錯誤
+                return Response({
+                    "error": "資料驗證失敗。",
+                    "details": form.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"更新失敗：{str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PasswordChangeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            user = request.user
+            form = PasswordChangeForm(user=user, data=request.data)
+            if form.is_valid():
+                form.save()
+                return Response({
+                    "message": "密碼修改成功。"
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "error": "密碼修改失敗。",
+                    "details": form.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"密碼修改失敗：{str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@method_decorator(csrf_exempt, name="dispatch")
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        data = request.data
-        name = data.get("name")
-        email = data.get("email")
-        password = data.get("password")
-        password_confirmation = data.get("passwordConfirmation")
-        if not all([name, email, password, password_confirmation]):
-            return Response({"error": "尚有欄位未填寫。"}, status=status.HTTP_400_BAD_REQUEST)
-        if password != password_confirmation:
-            return Response({"error": "密碼不一致。"}, status=status.HTTP_400_BAD_REQUEST)
-        if User.objects.filter(email=email).exists():
-            return Response({"error": "此信箱已被註冊。"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            user = User.objects.create_user(username=email, email=email, name=name, password=password)
-            print(f"User created: {user}")
-            return Response({"message": "註冊成功。"}, status=status.HTTP_201_CREATED)
+            form = UserRegistrationForm(data=request.data)
+            if form.is_valid():
+                user = form.save()
+                return Response({
+                    "message": "註冊成功。",
+                    "user": {
+                        "id": user.id,
+                        "email": user.email,
+                        "name": user.name,
+                        "username": user.username
+                    }
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    "error": "註冊失敗",
+                    "details": form.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            print(f"Error: {e}")
-            return Response({"error": f"註冊失敗: {str(e)}。"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"註冊失敗： {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @method_decorator(csrf_exempt, name="dispatch")
 class LoginView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
         try:
             email = request.data.get("email")
@@ -76,27 +129,39 @@ class LogoutView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# google login
+# Google 登入
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
         token = request.data.get("token")
         if not token:
             return Response({"error": "沒有 token。"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            info = id_token.verify_oauth2_token(token, google_requests.Request(), os.getenv("GOOGLE_CLIENT_ID"))
+            info = id_token.verify_oauth2_token(
+                token, 
+                google_requests.Request(), 
+                os.getenv("GOOGLE_CLIENT_ID")
+            )
             email = info.get("email")
             name = info.get("name")
-            user, created = User.objects.get_or_create(email=email, defaults={
-                "username": email,
-                "name": name,
-            })
+            user, created = User.objects.get_or_create(
+                email=email, 
+                defaults={
+                    "username": email,
+                    "name": name,
+                }
+            )
             if created:
                 user.set_unusable_password()
                 user.save()
             refresh = RefreshToken.for_user(user)
+            if created:
+                message = "首次登入成功。"
+            else:
+                message = "登入成功。"
             return Response({
-                "message": "登入成功。" if not created else "首次登入成功。",
+                "message": message,
                 "user": {
                     "email": user.email,
                     "name": user.get_display_name(),
