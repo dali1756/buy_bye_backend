@@ -83,14 +83,7 @@ class BrandViewSet(viewsets.ModelViewSet):
         return BrandSerializer
 
     def get_queryset(self):
-        queryset = Brand.objects.all()
-        show_inactive = self.request.query_params.get("show_inactive", "false").lower()
-        if show_inactive != "true":
-            queryset = queryset.filter(is_active=True)
-        country = self.request.query_params.get("country")
-        if country:
-            queryset = queryset.filter(country__icontains=country)
-        return queryset
+        return Brand.objects.all()
 
     # 取得所有品牌國家
     @action(detail=False, methods=["get"])
