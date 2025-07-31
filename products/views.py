@@ -1,8 +1,8 @@
-from rest_framework import viewsets, filters
-from .models import Product, MainCategory, SubCategory
-from .serializers import ProductSerializer, MainCategorySerializer, SubCategorySerializer
+from rest_framework import viewsets, filters, status
+from .models import Product, MainCategory, SubCategory, Brand
+from .serializers import ProductSerializer, MainCategorySerializer, SubCategorySerializer, BrandSerializer, BrandList
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q
+from django.db.models import Q, Count
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -61,5 +61,56 @@ class ProductViewSet(viewsets.ModelViewSet):
             return Response([])
         suggestions = Product.objects.filter(name__icontains=query).values_list("name", flat=True)[:5]
         return Response(list(suggestions))
+
+class BrandViewSet(viewsets.ModelViewSet):
+    queryset = Brand.objects.all()
+    serializer_class = BrandSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name", "country", "description"]
+    filterset_fields = {
+        "is_active": ["exact"],
+        "country": ["exact"],
+    }
+    ordering_fields = ["name", "sort_order", "created_at", "country"]
+    ordering = ["sort_order", "name"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return BrandList
+        return BrandSerializer
+
+    def get_queryset(self):
+        queryset = Brand.objects.all()
+        show_inactive = self.request.query_params.get("show_inactive", "false").lower()
+        if show_inactive != "true":
+            queryset = queryset.filter(is_active=True)
+        country = self.request.query_params.get("country")
+        if country:
+            queryset = queryset.filter(country__icontains=country)
+        return queryset
+
+    # 取得所有品牌國家
+    @action(detail=False, methods=["get"])
+    def countries(self, request):
+        countries = Brand.objects.filter(is_active=True).values_list("country", flat=True).distinct().exclude(country__exact="")
+        return Response(list(countries))
+
+    # 取得指定品牌所有內容
+    @action(detail=True, methods=["get"])
+    def products(self, request, pk=None):
+        brand = self.get_object()
+        products = brand.products.select_related("main_category", "sub_category")
+        in_stock_only = request.query_params.get("in_stock_only", "false").lower()
+        if in_stock_only == "true":
+            products = products.filter(stock__gt=0)
+        serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data)
+
+    # 熱門商品，依照數量排序
+    @action(detail=False, methods=["get"])
+    def popular(self, request):
+        brands = Brand.objects.filter(is_active=True).annotate(products_count=Count("products")).filter(products_count__gt=0).order_by("-products_count")[:10]
+        serializer = BrandList(brands, many=True)
+        return Response(serializer.data)
 
 CategoryViewSet = MainCategoryViewSet

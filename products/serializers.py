@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product, MainCategory, SubCategory
+from .models import Product, MainCategory, SubCategory, Brand
 
 class MainCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -29,5 +29,20 @@ class ProductSerializer(serializers.ModelSerializer):
                 "name": obj.main_category.name
             }
         return None
+
+class BrandSerializer(serializers.ModelSerializer):
+    products_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Brand
+        fields = "__all__"
+
+    def get_products_count(self, obj):
+        return obj.products.filter(stock__gt=0).count()
+
+class BrandList(serializers.ModelSerializer):
+    class Meta:
+        model = Brand
+        fields = ["id", "name", "country", "is_active"]
 
 CategorySerializer = MainCategorySerializer
