@@ -5,6 +5,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 class MainCategoryViewSet(viewsets.ModelViewSet):
     queryset = MainCategory.objects.all()
@@ -62,6 +64,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         suggestions = Product.objects.filter(name__icontains=query).values_list("name", flat=True)[:5]
         return Response(list(suggestions))
 
+@method_decorator(csrf_exempt, name="dispatch")
 class BrandViewSet(viewsets.ModelViewSet):
     queryset = Brand.objects.all()
     serializer_class = BrandSerializer

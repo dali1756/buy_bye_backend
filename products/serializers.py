@@ -41,8 +41,12 @@ class BrandSerializer(serializers.ModelSerializer):
         return obj.products.filter(stock__gt=0).count()
 
 class BrandList(serializers.ModelSerializer):
+    products_count = serializers.SerializerMethodField()
     class Meta:
         model = Brand
-        fields = ["id", "name", "country", "is_active"]
+        fields = "__all__"
+
+    def get_products_count(self, obj):
+        return obj.products.filter(stock__gt=0).count()
 
 CategorySerializer = MainCategorySerializer
