@@ -24,7 +24,6 @@ class SubCategoryViewSet(viewsets.ModelViewSet):
         return queryset
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "description", "main_category__name", "sub_category__name"]
@@ -38,7 +37,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        queryset = Product.objects.select_related("main_category", "sub_category")
+        queryset = Product.objects.select_related("main_category", "sub_category", "brand").all()
         search_query = self.request.query_params.get("search", None)
         if search_query:
             queryset = queryset.filter(Q(name__icontains=search_query) | Q(description__icontains=search_query) | Q(main_category__name__icontains=search_query) | Q(sub_category__name__icontains=search_query))
